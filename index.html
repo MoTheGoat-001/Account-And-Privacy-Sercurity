@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberPassport: 3D Security Academy</title>
+    <!-- FIX: Correct fully active global CDN link for Three.js engine -->
+    <script src="https://cloudflare.com"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.9);
+            --neon-blue: #38bdf8;
+            --neon-green: #4ade80;
+            --neon-red: #f87171;
+            --text-light: #f8fafc;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', sans-serif;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+        }
+
+        #c {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* DIGITAL PASSPORT HUD */
+        #passport-hud {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            background: var(--panel-bg);
+            border: 2px solid var(--neon-blue);
+            border-radius: 12px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .hud-header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--neon-blue);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .badge-container {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .badge {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.05);
+            border: 2px dashed #475569;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            filter: grayscale(1);
+        }
+
+        .badge.unlocked {
+            filter: grayscale(0);
+            border: 2px solid var(--neon-green);
+            background: rgba(74, 222, 128, 0.1);
+        }
+
+        /* BACKUP CONTROL PANEL IF RAYCASTING FAILS */
+        #fallback-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 10px 20px;
+            border-radius: 50px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .terminal-btn {
+            background: #1e293b;
+            color: white;
+            border: 1px solid #475569;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85rem;
+        }
+        .terminal-btn:hover { background: var(--neon-blue); color: black; }
+
+        /* MISSION MODALS */
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 500px;
+            background: var(--panel-bg);
+            border: 2px solid #475569;
+            border-radius: 16px;
+            padding: 25px;
+            backdrop-filter: blur(15px);
+            z-index: 20;
+            display: none;
+        }
+
+        .modal.active { display: block; }
+        .modal.phishing { border-color: var(--neon-blue); }
+        .modal.password { border-color: #a855f7; }
+        .modal.privacy { border-color: var(--neon-green); }
+
+        .modal h2 { margin-bottom: 15px; }
+        .modal p { margin-bottom: 20px; color: #cbd5e1; line-height: 1.5; }
+
+        .btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #475569;
+            color: var(--text-light);
+            padding: 12px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+            text-align: left;
+        }
+
+        .btn:hover { background: var(--text-light); color: var(--bg-dark); }
+
+        #toast {
+            position: absolute;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 30px;
+            background: var(--panel-bg);
+            border-radius: 30px;
+            border: 1px solid var(--neon-green);
+            font-weight: bold;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 30;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="c"></canvas>
+
+    <!-- HUB DATA -->
+    <div id="passport-hud">
+        <div class="hud-header">
+            <span>DIGITAL PASSPORT</span>
+            <span id="score-display">XP: 0</span>
+        </div>
+        <div>Status: <span id="rank-display" style="color: var(--neon-blue)">Novice Agent</span></div>
+        <div class="badge-container">
+            <div class="badge" id="badge-phish" title="Phishing Badge">🛡️</div>
+            <div class="badge" id="badge-pass" title="Vault Badge">🔑</div>
+            <div class="badge" id="badge-priv" title="Privacy Badge">👤</div>
+        </div>
+    </div>
+
+    <!-- BACKUP QUICK INTERACTION MENU (GUARANTEES ACCESS) -->
+    <div id="fallback-controls">
+        <button class="terminal-btn" onclick="triggerModule('phish')">🌐 Phishing Node</button>
+        <button class="terminal-btn" onclick="triggerModule('pass')">🔑 Password Vault</button>
+        <button class="terminal-btn" onclick="triggerModule('priv')">👤 Privacy Shield</button>
+    </div>
+
+    <!-- MODULE 1 -->
+    <div class="modal phishing" id="modal-phish">
+        <h2>🛡️ Phishing Firewall Incident</h2>
+        <p>An urgent system message requests security settings clearance. Spot the safe scenario:</p>
+        <button class="btn" onclick="submitAnswer('phish', false)">"Urgent alert! Update coins here: http://free-robux-legit-claims.net"</button>
+        <button class="btn" onclick="submitAnswer('phish', true)">"Security Notice: Verify login from new IP using your manual 2FA authenticator app code."</button>
+        <button class="btn" onclick="submitAnswer('phish', false)">"From: account-security@g00g1e.support-portal.cc - Click to unlock profile structure."</button>
+    </div>
+
+    <!-- MODULE 2 -->
+    <div class="modal password" id="modal-pass">
+        <h2>🔑 Cryptographic Vault Strength</h2>
+        <p>Select the password safe from rapid automated dictionary hacks:</p>
+        <button class="btn" onclick="submitAnswer('pass', false)">"DragonLord2012"</button>
+        <button class="btn" onclick="submitAnswer('pass', false)">"P@ssw0rd123!"</button>
+        <button class="btn" onclick="submitAnswer('pass', true)">"blue-velvet-crashing-waves-4!" (Long multi-word sentence sequence)</button>
+    </div>
+
+    <!-- MODULE 3 -->
+    <div class="modal privacy" id="modal-priv">
+        <h2>👤 Data Footprint Containment</h2>
+        <p>A new background web game app demands systemic account tokens. Best countermeasure?</p>
+        <button class="btn" onclick="submitAnswer('priv', false)">Grant total background execution profiling tracking.</button>
+        <button class="btn" onclick="submitAnswer('priv', true)">Select 'Ask App Not to Track' and restrict access to active system runtime hours.</button>
+        <button class="btn" onclick="submitAnswer('priv', false)">Allow track connection but create an alternative proxy alias setup.</button>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const gameState = { score: 0, completed: { phish: false, pass: false, priv: false } };
+        const canvas = document.querySelector('#c');
+        const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#0b0f19');
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 7, 12);
+        camera.lookAt(0, 1, 0);
+
+        scene.add(new THREE.AmbientLight('#1e293b', 1.5));
+        const light = new THREE.DirectionalLight('#38bdf8', 2);
+        light.position.set(5, 10, 7);
+        scene.add(light);
+
+        // Low poly stage terrain mapping
+        const floorGeo = new THREE.PlaneGeometry(40, 40, 10, 10);
+        floorGeo.rotateX(-Math.PI / 2);
+        const floorMat = new THREE.MeshStandardMaterial({ color: '#111827', roughness: 0.8, flatShading: true });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        scene.add(floor);
+
+        const grid = new THREE.GridHelper(40, 20, '#1e293b', '#1e293b');
+        grid.position.y = 0.02;
+        scene.add(grid);
+
+        // Nodes config
+        const nodesArray = [];
+        const nodeGeo = new THREE.OctahedronGeometry(1.2, 0);
+
+        function makeNode(id, color, x) {
+            const mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.3, flatShading: true });
+            const mesh = new THREE.Mesh(nodeGeo, mat);
+            mesh.position.set(x, 2, -2);
+            mesh.userData = { id: id };
+            scene.add(mesh);
+            nodesArray.push(mesh);
+        }
+
+        makeNode('phish', '#38bdf8', -5);
+        makeNode('pass', '#a855f7', 0);
+        makeNode('priv', '#4ade80', 5);
+
+        // Input Setup
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('click', (e) => {
